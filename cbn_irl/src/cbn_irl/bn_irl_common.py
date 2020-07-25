@@ -12,7 +12,7 @@ import rospkg
 from mdp import parallel_value_iteration as vi
 import bn_irl_utils as ut
 
-eps = np.finfo(np.float64).eps
+eps = np.finfo(np.float).eps
 
 class O:
     def __init__(self, state, action):
@@ -129,8 +129,9 @@ def likelihood(observation, goal, alpha=1., punishment=0., min_val=1e-10,
 
 def likelihoods(observation_states, observation_actions, goal, alpha=1.,
                 punishment=0., min_val=1e-10, observation_goal_actions=None, **kwargs):
+
     beta  = np.exp(alpha * goal[1][observation_states])
-    beta /= np.sum(beta, axis=-1)[:, np.newaxis]
+    beta /= (np.sum(beta, axis=-1)[:, np.newaxis]+eps)
 
     ## beta_max = np.amax(beta, axis=-1)[:, np.newaxis]
     ## beta_min = np.amin(beta, axis=-1)[:, np.newaxis]
@@ -152,7 +153,7 @@ def likelihoods(observation_states, observation_actions, goal, alpha=1.,
     #l *= 1.-punishment*(np.amax(beta, axis=-1)-l)
     ## #l /= np.sum(beta, axis=-1)    
     #l[l<0] = 0.
-    return l #* observation_goal_actions
+    ## return l #* observation_goal_actions
 
     #from IPython import embed; embed(); sys.exit()
 
@@ -239,9 +240,11 @@ def likelihood_vector_gc(observation_states, observation_actions, support_policy
 
             goal_states = support_feature_state_dict[i]
             for j in range(n_cstr):
+
                 llh_vector[i*n_cstr+j] = np.sum(likelihoods(observation_states, observation_actions, \
                                                             [goal_states[-1],\
                                                              support_policy[goal_states[-1]][j]],\
+                                                             ## support_policy[goal_states[-1]].astype(np.float)[j]],\
                                                              alpha=alpha,\
                                                              punishment=punishment,\
                                                              observation_goal_actions=goal_actions))
@@ -373,11 +376,11 @@ def sample(support_states, support_policy, support_feature_ids=None, roadmap=Non
         else:
             state = random.choice(support_states)
             
-        return [state, support_policy[state]]
+        return [state, support_policy[state].astype(np.float)]
     else:
         f_id = random.choice(np.unique(support_feature_ids))
         states = support_feature_state_dict[f_id]            
-        return [states[0], support_policy[states[0]], f_id]
+        return [states[0], support_policy[states[0]].astype(np.float), f_id]
 
 
 def sample_gc(support_states, support_policy, support_feature_ids=None, roadmap=None, z=None,
@@ -491,7 +494,7 @@ def sample_partition_assignment(obs, obs_i, z, goals,
         prob_vector = prob_vector**T
         prob_vector /= (np.sum(prob_vector)+eps)
         prob_sum    = np.sum(prob_vector)
-        assert prob_sum>=0.99, "assignment prob sum {} is lower than 1.".format(prob_sum)
+        assert prob_sum>=0.98, "assignment prob sum {} is lower than 1.".format(prob_sum)
         rv            = multinomial(n=1,p=prob_vector)
         chosen        = np.argmax(rv.rvs(1))
 
@@ -720,7 +723,7 @@ def init_irl_params(n_observations, n_goals, support_policy, support_states, sup
                 state = observations[-1].state
             s_idx = support_states.index(state)
             f_id  = support_feature_ids[s_idx]
-            goals.append([ state, support_policy[state][cstr_idx], support_feature_ids[s_idx],
+            goals.append([ state, support_policy[state][cstr_idx].astype(np.float), support_feature_ids[s_idx],
                            f_id, None, cstr_idx])
     return goals, z
     

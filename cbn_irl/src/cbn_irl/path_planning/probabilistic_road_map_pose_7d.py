@@ -198,7 +198,7 @@ def get_roadmap(env, knn=5, n_sample=500, traj=None,
     roadmap, skdtree = generate_roadmap_parallel(samples, env, MAX_EDGE_LEN, leafsize, knn)
     ## skdtree = KDTree(samples, leafsize=leafsize)
 
-    return roadmap, np.array(samples), skdtree
+    return roadmap, np.array(samples).astype(np.float16), skdtree
 
 
 def get_straight_traj(env, init_stds, n_points=50):
@@ -366,7 +366,7 @@ def generate_roadmap_parallel(samples, env, max_dist, leafsize, knn):
         pool.map(work, range(0, n_sample, chunksize))#, reduce=reduce)
 
     # convert sharedmem array to list
-    roadmap = np.array(roadmap).astype(int)
+    roadmap = np.array(roadmap).astype(np.uint16) # Unsigned integer (0 to 65535)
     skdtree = None #KDTree(samples, leafsize=leafsize)
     return roadmap.tolist(), skdtree
 
@@ -462,11 +462,7 @@ def sample_points_rrm(env, traj_pts, traj_stds, samples, node_groups, roadmap,
                                     (env.observation_space.high[2]-point[2])/std[2],
                                     loc=point[2], scale=std[2] ).rvs(1)[0],
                          0,0,0,1] )
-        q = qt.quat_QuTem(point[3:7], 1, std[3:7])[0]
-        rnd[3] = q[0]
-        rnd[4] = q[1]
-        rnd[5] = q[2]
-        rnd[6] = q[3]
+        rnd[3:7] = qt.quat_QuTem(point[3:7], 1, std[3:7])[0]
 
         for sub_sample in sub_samples:
             # Find nearest node        
@@ -482,12 +478,9 @@ def sample_points_rrm(env, traj_pts, traj_stds, samples, node_groups, roadmap,
 
             # ang
             org_dist = qt.quat_angle(nearest_sample[3:7], rnd[3:7])/np.pi/2.
-            q = qt.slerp(nearest_sample[3:7], rnd[3:7], min(w_max/180.*np.pi/org_dist, 1.))
-            nearest_sample[3] = q[0]
-            nearest_sample[4] = q[1]
-            nearest_sample[5] = q[2]
-            nearest_sample[6] = q[3]
-
+            nearest_sample[3:7] = qt.slerp(nearest_sample[3:7], rnd[3:7],
+                                           min(w_max/180.*np.pi/org_dist, 1.))
+        
             # pos
             unit_vec  = rnd[:3]-nearest_sample[:3]
             unit_vec /= np.linalg.norm(unit_vec)

@@ -1,4 +1,4 @@
-import sys, os, copy
+import sys, os, copy, time
 import random
 import pickle
 import numpy as np, scipy
@@ -69,11 +69,12 @@ def bn_irl(env, roadmap, skdtree, states, T, gamma, trajs, idx_trajs,
     observation_actions = [obs.action for obs in observations]
 
     # visualize feature distribution
-    #feat_map = fu.get_features_from_states(env, states, feature_fn)
-    #feat_trajs = np.array(ut.trajs2featTrajs(idx_trajs, feat_map))
-    #viz_feat_traj(feat_trajs[0])
+    ## feat_map = fu.get_features_from_states(env, states, feature_fn)
+    ## feat_trajs = np.array(ut.trajs2featTrajs(idx_trajs, feat_map))
+    ## viz_feat_traj(feat_trajs[0])
     
     # precomputation Q and pi per support features that is a list of goals [feature, policy]
+    time0 = time.time()
     if os.path.isfile(kwargs['sav_filenames']['Q']) is False or kwargs.get('vi_renew', True):
         assert len(np.shape(trajs))==3, "wrong shape or number of trajectories"
 
@@ -155,15 +156,15 @@ def bn_irl(env, roadmap, skdtree, states, T, gamma, trajs, idx_trajs,
                 cstr_score += cstr_map[idx]*support_values[idx_trajs[0][-1]][0,idx]
             print "{}th feat's cstr score = {}".format(i, cstr_score)
 
-            ## from viz import viz as v
-            ## ## ss = states[cstr_map>0]
-            ## ## cc = cstr_map[cstr_map>0]
-            ## ## if np.amax(support_values[idx_trajs[0][-1]]) == 0: continue
-            ## v.reward_value_plot(agent.rewards, support_values[idx_trajs[0][-1]][0], states, trajs=trajs)
-            ## ## v.reward_value_3d(cc, cc, ss, trajs=trajs, env=env)
-            ## ## v.reward_value_plot(cstr_map, cstr_map, states, trajs=trajs)
-            ## ## v.reward_value_3d(cstr_map, cstr_map, states, trajs=trajs, env=env)
-            ## ## continue
+            from viz import viz as v
+            ## ss = states[cstr_map>0]
+            ## cc = cstr_map[cstr_map>0]
+            ## if np.amax(support_values[idx_trajs[0][-1]]) == 0: continue
+            v.reward_value_plot(agent.rewards, support_values[idx_trajs[0][-1]][0], states, trajs=trajs)
+            ## v.reward_value_3d(cc, cc, ss, trajs=trajs, env=env)
+            ## v.reward_value_plot(cstr_map, cstr_map, states, trajs=trajs)
+            ## v.reward_value_3d(cstr_map, cstr_map, states, trajs=trajs, env=env)
+            ## continue
             
 
         # vi agent
@@ -201,7 +202,6 @@ def bn_irl(env, roadmap, skdtree, states, T, gamma, trajs, idx_trajs,
         print "No cstr score = {}".format(cstr_score)
         ## from viz import viz as v
         ## v.reward_value_plot(agent.rewards, support_values[idx_trajs[0][-1]][0], states, trajs=trajs) 
-       
 
         d = {}
         d['support_policy_dict']   = support_policy_dict
@@ -214,10 +214,12 @@ def bn_irl(env, roadmap, skdtree, states, T, gamma, trajs, idx_trajs,
         d['support_feature_values']     = support_feature_values
         d['support_feature_state_dict'] = support_feature_state_dict
         pickle.dump( d, open( kwargs['sav_filenames']['Q'], "wb" ) )
+        del support_values, support_validity_dict
+        del d
     else:        
         d = pickle.load( open(kwargs['sav_filenames']['Q'], "rb"))
         support_policy_dict   = d['support_policy_dict']
-        support_validity_dict = d['support_validity_dict']
+        ## support_validity_dict = d['support_validity_dict']
         feat_trajs       = d['feat_trajs']
         feat_map         = d['feat_map']
         feat_range       = d['feat_range']
@@ -225,6 +227,7 @@ def bn_irl(env, roadmap, skdtree, states, T, gamma, trajs, idx_trajs,
         support_feature_values     = d['support_feature_values']
         support_feature_state_dict = d['support_feature_state_dict']
         cstr_feat_id     = d['cstr_feat_id']
+    time1 = time.time()
 
         
     # initialization
@@ -255,7 +258,8 @@ def bn_irl(env, roadmap, skdtree, states, T, gamma, trajs, idx_trajs,
 
     
     #=======================================================================================
-    eps = np.finfo(float).eps    
+    ## eps = np.finfo(float).eps    
+    time2 = time.time()
     tqdm_e  = tqdm(range(n_iters), desc='Score', leave=True, unit=" episodes")
     for iteration in tqdm_e:
         support_validity_per_goal = []
@@ -299,6 +303,7 @@ def bn_irl(env, roadmap, skdtree, states, T, gamma, trajs, idx_trajs,
             try:
                 goal_state_support_ids = [support_states.index(goal[0]) for goal in goals]
             except:
+                print "goal_state_support_ids is wrong"
                 from IPython import embed; embed(); sys.exit()
             #reassignment
             z, goals = bic.sample_partition_assignment(obs, i, z, goals,\
@@ -321,6 +326,13 @@ def bn_irl(env, roadmap, skdtree, states, T, gamma, trajs, idx_trajs,
                 
         tqdm_e.set_description("t: {0:.2f}, post: {1:.2f}), goals: {2:.1f}".format(0, 0, len(goals)))
         tqdm_e.refresh()
+
+    time3 = time.time()
+
+    print "---------------------------------------------"
+    print "Precomputation Time: {}".format(time1-time0)
+    print "Gibbs Sampling Time: {}".format(time3-time2)
+    print "---------------------------------------------"
 
     pickle.dump( log, open( kwargs['sav_filenames']['irl'], "wb" ) )    
     return log
@@ -454,12 +466,13 @@ def find_goal(mdp, env, log, states, feature_fn, roadmap,
                     T                /= sum_T[:,:,np.newaxis]            
                     mdp.T             = T
 
-                    ## from IPython import embed; embed()#; sys.exit()
-                    ## sys.path.insert(0,'..')
+                    ## #from IPython import embed; embed()#; sys.exit()
+                    ## #sys.path.insert(0,'..')
                     ## from viz import viz as v
                     ## r = cstr_fns[i](range(len(states)))
-                    ## v.reward_plot_3d(r, states, env)    
-                    ## sys.exit()
+                    ## v.reward_plot(r, states)    
+                    ## ## v.reward_plot_3d(r, states, env)    
+                    ## #sys.exit()
 
                 mdp.set_goal(s_ids)
                 ## values, param_dict = mdp.solve_mdp(error, return_params=True)#, max_cnt=100)
@@ -575,9 +588,7 @@ def find_action(s_idx, g_k, alpha=1.):
 
 
 def get_action_prior(trajs, idx_trajs, roadmap, support_states, states, support_feature_ids,
-                     n_cstr=0):
-
-    window_size = 8
+                     n_cstr=0, window_size=8):    
 
     actions = [[] for _ in xrange(len(support_states)) ]
     if type(trajs) is list: trajs = np.array(trajs)

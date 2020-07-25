@@ -90,7 +90,7 @@ class KDTree:
 
 def get_roadmap(env, knn=5, n_sample=500, traj=None,
                 std_traj=None, leafsize=None, viz=False,
-                init_stds = [0.03,0.03],
+                init_stds = [0.03,0.03], limits=None,
                 **kwargs):
     u"""Generate roadmap"""
 
@@ -100,7 +100,7 @@ def get_roadmap(env, knn=5, n_sample=500, traj=None,
         
     # Set a straight trajectory or use a demo traj
     if traj is None:
-        samples = add_random_points(env, n_sample=n_sample, min_dist=env.robot_size)
+        samples = add_random_points(env, n_sample=n_sample, min_dist=env.robot_size, limits=limits)
         ## samples = sample_points(start, goal, rr, obstacles,
         ##                         obkdtree, lim, n_sample=n_sample, env=env)
     else:
@@ -138,7 +138,7 @@ def get_roadmap(env, knn=5, n_sample=500, traj=None,
                 break
             
         # Expand the roadmap using random points
-        samples = add_random_points(env, n_sample=100, samples=samples, min_dist=env.robot_size)
+        samples = add_random_points(env, n_sample=100, samples=samples, min_dist=env.robot_size, limits=limits)
         roadmap, skdtree = generate_roadmap_parallel(samples, env, MAX_EDGE_LEN, leafsize, knn)
         print cnt, len(samples), len(node_groups)
             
@@ -365,15 +365,19 @@ def check_connectivity(env, roadmap, states, enable_dikstra=True):
 
 
 
-def add_random_points(env, n_sample=500, default_y_angle=0, samples=None, min_dist=0.001):
+def add_random_points(env, n_sample=500, default_y_angle=0, samples=None, min_dist=0.001, limits=None):
     """Sample x,y,z,r,p """    
     if samples is None: samples = []
 
     cnt = 0
     while cnt<n_sample:# or reached is False:
         # Random Sampling
-        rnd = np.array([random.uniform(env.observation_space.low[0], env.observation_space.high[0]),
-                        random.uniform(env.observation_space.low[1], env.observation_space.high[1])])
+        if limits is None:
+            rnd = np.array([random.uniform(env.observation_space.low[0], env.observation_space.high[0]),
+                            random.uniform(env.observation_space.low[1], env.observation_space.high[1])])
+        else:
+            rnd = np.array([random.uniform(limits[0][0], limits[0][1]),
+                            random.uniform(limits[1][0], limits[1][1])])
 
         if env.isValid(rnd, check_collision=False) is False:
             continue

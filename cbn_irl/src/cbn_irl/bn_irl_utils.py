@@ -158,7 +158,8 @@ def trajs2featTrajs(idx_trajs, feat_map, action_enabled=False):
 
 """
 """
-def animation_goals_2d(env, trajs, log, states, n_steps=10, enable_cstr=False, queue_size=1000):
+def animation_goals_2d(env, trajs, log, states, n_steps=10, enable_cstr=False, queue_size=1000,
+                       save_clip=False):
     import matplotlib.pyplot as plt
     import matplotlib.animation as animation
     import matplotlib.cm as cm
@@ -182,7 +183,7 @@ def animation_goals_2d(env, trajs, log, states, n_steps=10, enable_cstr=False, q
                     env.observation_space.low[1]:env.observation_space.high[1]:complex(0, N)]
     
     # matplot setup
-    fig = plt.figure(figsize=(12,4))
+    fig = plt.figure(figsize=(12,6))
     # Figure 1 --------------------------------------------------------------
     ax1 = fig.add_subplot(121) 
     # environments
@@ -356,8 +357,8 @@ def animation_goals_2d(env, trajs, log, states, n_steps=10, enable_cstr=False, q
                 except:
                     print "not enough partitions given higher number of expected goals:\
                     {} / {}".format(None, expected_n_goal)
-            ## print cstr_ids
             data_cstr.append(C)
+
 
     # attach tails
     for _ in range(n_steps):
@@ -407,7 +408,8 @@ def animation_goals_2d(env, trajs, log, states, n_steps=10, enable_cstr=False, q
     # Creating the Animation object
     ani = animation.FuncAnimation(fig, update_goals, frames=len(data_goal), #, fargs=([data_goal, data_z]),
                                   interval=1, blit=False, repeat=False)
-    #ani.save('ani.mp4', writer='ffmpeg', fps=15)
+    if save_clip:
+        ani.save('ani.mp4', writer='ffmpeg', fps=5)
     plt.show()
         
 

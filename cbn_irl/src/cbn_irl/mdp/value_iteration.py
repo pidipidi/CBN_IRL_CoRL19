@@ -120,7 +120,7 @@ class valueIterAgent:
             
             #if self.verbose: print diff
         if self.verbose: print "error converged to {} after {} iter".format(diff, count)
-
+        
         if return_params: return values, {'q': q_mat}
         return values
 

@@ -68,6 +68,7 @@ def test_on_discretized_space(env, agent, error, irl_goals, goal_dist,
         a_idx = bnirl.find_action(s_idx, g_k)#, alpha=irl_alphas[0])
         a     = env.get_action(states[s_idx], states[roadmap[s_idx][a_idx]])
         next_state, r, done, _ = env.step(a)
+        if viz: env.render()
 
 
         time += 1
@@ -80,11 +81,14 @@ def test_on_discretized_space(env, agent, error, irl_goals, goal_dist,
             if viz: v.subgoal_marker_pub( traj, 'sub_goals', marker_id=700 )
             break #continue #break
         state = next_state
+        ## if done:
+        ##     env.close()
+        ##     sys.exit()
 
         if distFunc is None:
-            s_idx       = np.argmin(np.linalg.norm(states-state, axis=-1))        
+            s_idx = np.argmin(np.linalg.norm(states-state, axis=-1))        
         else:
-            s_idx       = np.argmin(prm.pose_distance(states,state))                
+            s_idx = np.argmin(prm.pose_distance(states,state))                
 
         # determine if reached on a sub goal
         if (distFunc is not None and distFunc(states[g_k[0]], state)<goal_dist) or\

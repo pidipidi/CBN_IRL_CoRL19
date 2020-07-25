@@ -64,12 +64,14 @@ def traj_plot(demo_traj, fitted_traj, objects, xlim, ylim):
 
 def subgoals_plot(subgoals, objects, states, env, traj=None):
 
+    fig = plt.figure(figsize=(8,8))
+    
     colors = cm.rainbow(np.linspace(0, 1, len(subgoals)))
     states = [states[subgoals[i][0]] for i in range(len(subgoals)) ]
 
     for i, s in enumerate(states):
         plt.scatter(s[0], s[1], c=colors[i], s=200, edgecolors='none')
-        plt.text(s[0], s[1]-5, str(i) )
+        #plt.text(s[0], s[1]-5, str(i) )
 
     # start-goal
     plt.scatter(env.goal_state[0], env.goal_state[1], marker='*', c='r', s=400)
@@ -87,8 +89,11 @@ def subgoals_plot(subgoals, objects, states, env, traj=None):
     
     plt.xlim( [env.observation_space.low[0], env.observation_space.high[0] ])
     plt.ylim( [env.observation_space.low[1], env.observation_space.high[1] ])
-    
+    plt.axis('off')    
     plt.show()
+
+    fig.savefig("temp.png", format='png')
+    fig.savefig("temp.pdf", format='pdf')
 
 
 ############################################# 3D ######################################

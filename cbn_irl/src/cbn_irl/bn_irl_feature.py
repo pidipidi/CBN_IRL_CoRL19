@@ -1,4 +1,4 @@
-import sys, os, copy
+import sys, os, copy, time
 import random
 import pickle
 import numpy as np
@@ -62,6 +62,7 @@ def bn_irl(env, roadmap, skdtree, states, T, gamma, trajs, idx_trajs,
                               gamma=gamma, T=T)
 
     # precomputation Q and pi per support features that is a list of goals [feature, policy]
+    time0 = time.time()
     support_values = None
     support_validity = None
     if os.path.isfile(kwargs['sav_filenames']['Q']) is False or kwargs.get('vi_renew', False):
@@ -94,6 +95,7 @@ def bn_irl(env, roadmap, skdtree, states, T, gamma, trajs, idx_trajs,
         support_feature_ids        = d['support_feature_ids']
         support_feature_values     = d['support_feature_values']
         support_feature_state_dict = d['support_feature_state_dict']
+    time1 = time.time()
 
  
     # initialization
@@ -120,8 +122,9 @@ def bn_irl(env, roadmap, skdtree, states, T, gamma, trajs, idx_trajs,
         burn_in       = 0
 
     #=======================================================================================
-    eps = np.finfo(float).eps
-    
+    ## eps = np.finfo(float).eps
+
+    time2 = time.time()
     tqdm_e  = tqdm(range(n_iters), desc='Score', leave=True, unit=" episodes")
     for iteration in tqdm_e: 
         # sample subgoal & constraints 
@@ -177,6 +180,13 @@ def bn_irl(env, roadmap, skdtree, states, T, gamma, trajs, idx_trajs,
         tqdm_e.set_description("goals: {0:.1f}".format(len(goals)))
         tqdm_e.refresh()
 
+    time3 = time.time()
+
+    print "---------------------------------------------"
+    print "Precomputation Time: {}".format(time1-time0)
+    print "Gibbs Sampling Time: {}".format(time3-time2)
+    print "---------------------------------------------"
+    
     pickle.dump( log, open( kwargs['sav_filenames']['irl'], "wb" ) )    
     return log
     
@@ -198,6 +208,7 @@ def find_goal(mdp, env, log, states, feature_fn, cstr_fn=None, error=1e-10, ths=
     # compute q_mat for a sub-goal
     new_goals = []
     for i, f_id in enumerate(goal_features):
+        print "-------------------------------------------------------------------"
         print "Find {}th goal".format(i)
         # feature goal
         idx  = irl_support_feature_ids.index(f_id)
@@ -208,6 +219,7 @@ def find_goal(mdp, env, log, states, feature_fn, cstr_fn=None, error=1e-10, ths=
         rewards = np.array(rewards)
         rewards[np.where(rewards>0)]=0.
 
+        ## from IPython import embed; embed(); sys.exit()
         # find the closest state from a goal
         d = np.linalg.norm(features-f, ord=np.inf, axis=-1)        
         dist_ths = ths
@@ -217,7 +229,7 @@ def find_goal(mdp, env, log, states, feature_fn, cstr_fn=None, error=1e-10, ths=
         
         bad_goals = []
         while True:
-            s_ids = [j for j in range(len(d)) if d[j] <= dist_ths]            
+            s_ids = [j for j in range(len(d)) if d[j] <= dist_ths and (features[j]>0).all()]            
             if len(s_ids)>0:
                 goal_found=False
                 for idx in s_ids:
@@ -228,9 +240,11 @@ def find_goal(mdp, env, log, states, feature_fn, cstr_fn=None, error=1e-10, ths=
                     if rx1 is not None:
                         goal_found = True
                         break
-                    bad_goals.append(idx)
-                print s_ids, goal_found, dist_ths
-                if goal_found: break            
+                    bad_goals.append(idx)                
+                if goal_found:
+                    print s_ids, goal_found, dist_ths                    
+                    break
+            print "Increase the goal range"
             dist_ths += ths
         print "----------------------------"
         print "Found sub-goals: ", s_ids
@@ -266,10 +280,19 @@ def find_goal(mdp, env, log, states, feature_fn, cstr_fn=None, error=1e-10, ths=
         #
         print "Start solve policy with new reward and T"
         mdp.T          = copy.copy(T_org)
-        ## values, param_dict = mdp.solve_mdp(error, return_params=True)
-        policy, values = mdp.find_policy(error)
-        new_goals.append([s_ids[0], copy.copy(policy), f_id])
-        ## new_goals.append([s_ids[0], copy.copy(param_dict['q']), f_id])
+        ## policy, values = mdp.find_policy(error)
+        ## new_goals.append([s_ids[0], copy.copy(policy), f_id])
+        new_goals.append([s_ids[0], None, f_id])
+
+
+    goal_state_ids = []
+    for i in range(len(new_goals)):
+        goal_state_ids.append( new_goals[i][0] )
+    policies = biq.computePolicies(mdp, goal_state_ids, error)
+    for i in range(len(new_goals)):
+        new_goals[i][1] = policies[i]
+    
+        
 
     return new_goals
 

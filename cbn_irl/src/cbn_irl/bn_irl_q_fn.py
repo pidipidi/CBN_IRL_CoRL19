@@ -7,6 +7,8 @@ from cbn_irl.mdp import value_iteration as vi
 ## from mdp import constrained_value_iteration as cvi
 import copy
 
+eps = np.finfo(np.float).eps
+## eps = np.finfo(float).eps    
 
 def precomputeQ(mdp, support_states, error=1e-10, support_features=None, support_feature_state_dict=None,
                 cstr_fn=None, add_no_cstr=True, **kwargs):
@@ -39,7 +41,7 @@ def precomputeQ(mdp, support_states, error=1e-10, support_features=None, support
             T *= validity_map[roadmap][:,np.newaxis,:]
             sum_T = np.sum(T, axis=-1)
             sum_T[np.where(sum_T==0.)] = 1.
-            T /= sum_T[:,:,np.newaxis]
+            T /= (sum_T[:,:,np.newaxis]+eps)
             #from IPython import embed; embed(); sys.exit()  
             cstr_T.append(T)
     else:
@@ -137,7 +139,6 @@ def computeQ(mdp, support_states, error=1e-10, support_features=None, support_fe
     n_support_states = len(support_states)
     n_actions, n_states = mdp.n_actions, mdp.n_states
 
-    eps     = np.finfo(float).eps    
     roadmap = mdp.roadmap
     states  = mdp.states
     gamma   = mdp.gamma
@@ -180,7 +181,7 @@ def computeQ(mdp, support_states, error=1e-10, support_features=None, support_fe
                 Tc                = mdp.T*validity_map[:,np.newaxis,:]
                 Tc[:,:,0]         = eps
                 sum_T             = np.sum(Tc, axis=-1)
-                Tc               /= sum_T[:,:,np.newaxis]
+                Tc               /= (sum_T[:,:,np.newaxis]+eps)
                 cstr_T.append(Tc)
         
     # Start multi processing over support states
@@ -267,8 +268,9 @@ def computeQ(mdp, support_states, error=1e-10, support_features=None, support_fe
     support_values_dict   = {}
     support_validity_dict = {}
     for i, s in enumerate(support_states):
-        support_q_mat_dict[s]  = np.array(support_q_mat[i])
-        support_values_dict[s]  = np.array(support_values[i])
+        support_q_mat_dict[s]  = np.array(support_q_mat[i]) #.astype(np.float)
+        support_values_dict[s]  = np.array(support_values[i]) #.astype(np.float)
+
         if cstr_fn is not None:
             support_validity_dict[s] = np.array(support_validity[i])
 
@@ -276,6 +278,78 @@ def computeQ(mdp, support_states, error=1e-10, support_features=None, support_fe
         return support_q_mat_dict, support_values_dict, support_validity_dict
     else:
         return support_q_mat_dict, support_values_dict
+
+
+
+def computePolicies(mdp, goal_states, error=1e-10):
+    """Compute Q using multi-process
+    """
+    # initialization of variables
+    n_goal_states = len(goal_states)
+    n_actions, n_states = mdp.n_actions, mdp.n_states
+
+    roadmap = mdp.roadmap
+    states  = mdp.states
+    gamma   = mdp.gamma
+    T       = mdp.T
+    rewards = mdp.get_rewards()
+    #from IPython import embed; embed(); sys.exit()    
+    if rewards is None: rewards=np.zeros(len(mdp.states))
+    else:
+        rewards = np.array(rewards)
+        rewards[np.where(rewards>0)]=0.        
+    goal_state_ids = np.arange(n_goal_states, dtype='i')
+    
+    goal_policy_mat  = sharedmem.full((n_goal_states, mdp.n_states, mdp.n_actions), 0.)
+    ## goal_values   = sharedmem.full((n_goal_states, mdp.n_states), 0.)
+    ## goal_validity = sharedmem.full((n_goal_states), True)
+        
+    # Start multi processing over goal states
+    with sharedmem.MapReduce() as pool:
+        if n_goal_states % sharedmem.cpu_count() == 0:
+            chunksize = n_goal_states / sharedmem.cpu_count()
+        else:
+            chunksize = n_goal_states / sharedmem.cpu_count() + 1
+
+        def work(i):
+            state_ids = goal_state_ids[slice (i, i + chunksize)] #0,1,2,3
+                
+            new_rewards = copy.copy(rewards)
+            values      = np.zeros(n_states)
+            
+            for j, goal_state_id in enumerate(state_ids):
+                s = goal_states[goal_state_id] # state id in states
+                ## s_idx = states.index(s)
+                
+                # vi agent
+                mdp = vi.valueIterAgent(n_actions, n_states,
+                                        roadmap, None, states,
+                                        gamma=gamma, T=T)                
+                mdp.set_goal(s)
+
+                if new_rewards[s] >= 0.:
+                    new_rewards[s] = 1. 
+                mdp.set_rewards(new_rewards)
+
+                # Store q_mat and validity mat per state
+                policy, _ = mdp.find_policy(error)
+                goal_policy_mat[goal_state_id] = policy                    
+                    
+                # find all states that gives f_g in states
+                for k, gs in enumerate(goal_states):
+                    if s == gs:
+                        goal_policy_mat[k] = policy
+                # reset
+                new_rewards[s] = 0. 
+
+        pool.map(work, range(0, n_goal_states, chunksize))#, reduce=reduce)
+
+    # convert sharedmem array to list
+    policies = []    
+    for i in range(n_goal_states):
+        policies.append( np.array(goal_policy_mat[i]) )
+
+    return policies
 
 
 

@@ -11,8 +11,6 @@ import scipy.spatial
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 
-FPS=50
-
 def make_default_reward(goal, dist_thres=2.5):
     def reward_fn(state):
         dist = np.linalg.norm(goal-state)
@@ -23,17 +21,16 @@ def make_default_reward(goal, dist_thres=2.5):
     
 
 
-class ReachingEnv(gym.Env):
+class ReachingEnv_v1(gym.Env):
     metadata = {
         'render.modes': ['human', 'rgb_array'],
-        'video.frames_per_second' : FPS
+        'video.frames_per_second' : 20
         }
-    def __init__(self, start=None, goal=None, objects=None, viz=False,
-                 discrete_progress=False, **kwargs):
-        self.viz = viz
-        self.robot_size = 0.25 #0.5
+    def __init__(self, start=None, goal=None, objects=None,
+                 **kwargs):
+        self.robot_size = 0.5
         self.goal_size  = 1.
-        self.data_dict = kwargs.get('data_dict', None)
+        self.force_mag = 0.5
 
         self.set_start_state(start)
         self.set_goal_state(goal)
@@ -42,26 +39,19 @@ class ReachingEnv(gym.Env):
         self.reward_fn = make_default_reward(goal)
         ## self.rewards   = None
         self.trees = None
-        self.discrete_progress=discrete_progress
-
-        self.roadmap = kwargs.get('roadmap', None)
+        
+        self.roadmap = kwargs.get('roadmap', None)        
         self.states  = kwargs.get('states', None)
+        self.steps_beyond_done = None
+
+        self.action_space = spaces.Discrete(4)
+        self.fig = None
 
         self.seed(0)
-        self.fig = None
-        ## if viz:
-        ##     self.fig, self.ax = plt.subplots()
-        ##     self.ax.set_aspect('equal')            
-
-    @property
-    def action_space(self):
-        # this will be the joint space
-        return spaces.Box( -5, 5, (2,), dtype=np.float32)
 
     @property
     def observation_space(self):
-        return spaces.Box( 0., 60., (2,), dtype=np.float32)
-        ## return spaces.Box( 0., 60., (2,), dtype=np.float32)
+        return spaces.Box( 0., 60., (2,), dtype=np.float16)
 
 
     def seed(self, seed=None):
@@ -71,33 +61,58 @@ class ReachingEnv(gym.Env):
 
     def step(self, action):
         ''' return next observation, reward, finished, success '''
-        action = np.clip(action, self.action_space.low, self.action_space.high)
-        state  = self.state + action
-        reward = self.get_reward(state) 
+        assert self.action_space.contains(action), "%r (%s) invalid"%(action, type(action))
+        #action = np.clip(action, self.action_space.low, self.action_space.high)
+        ## state  = self.state + action
+        
+        # 0: +x +y
+        # 1: +x -y
+        # 2: -x +y
+        # 3: -x -y
+        if action==0:
+            force = np.array([self.force_mag, self.force_mag])
+        elif action==1:
+            force = np.array([self.force_mag, -self.force_mag])
+        elif action==2:
+            force = np.array([-self.force_mag, self.force_mag])
+        else:
+            force = np.array([-self.force_mag, -self.force_mag])
+        state = self.state + force
 
         info = {}
-        if self.isValid(state):
+        if self.isValid(state, check_collision=True):
             # succeeded state        
-            info['success'] = True
+            ## info['success'] = True
+            # terminal state        
+            done = self.isGoal(self.state)
         else:
             # failed state        
-            info['success'] = False
+            ## info['success'] = False
             state = self.state
             ## state = np.clip(state, self.observation_space.low, self.observation_space.high)
+            done = True
+
+        if not done:
+            reward = self.get_reward(state)            
+        elif self.steps_beyond_done is None:
+            # collision or out of bound?
+            self.steps_beyond_done = 0
+            reward = self.get_reward(state)            
+        elif done and self.steps_beyond_done == 0:
+            logger.warn("You are calling 'step()' even though this environment has already returned done = True. You should always call 'reset()' once you receive 'done = True' -- any further steps are undefined behavior.")
+            self.steps_beyond_done += 1
+            reward = 0.0
+            
         self.state = state
-
-        # terminal state        
-        done = self.isGoal(self.state)
-        if done:
-            self.state = self.goal_state
-
-        ## if self.viz: self.render()
         return self.state, reward, done, info
             
 
     def reset(self):
-        self.state = self.start_state
-        return self.start_state
+        ## from IPython import embed; embed(); sys.exit()
+        self.state = self.start_state + self.np_random.uniform(low=-1., high=1.,
+                                                               size=self.observation_space.shape)
+        self.steps_beyond_done = None        
+        return self.state
 
     
     def isGoal(self, state):
@@ -126,23 +141,20 @@ class ReachingEnv(gym.Env):
     def render(self, mode="human"):
         ''' Render 2d map
         '''
-        # plot current point?
         if self.fig is None:
-            self.fig, self.ax = plt.subplots(figsize=(30,30))
+            self.fig, self.ax = plt.subplots()
             self.ax.set_aspect('equal')
-            self.ax.axis('off')
 
             #colors = cm.rainbow(np.linspace(0, 1, len(self.objects_in_tree.keys())))
             ## for i, key in enumerate(self.objects_in_tree.keys()):
             ##     plt.plot(self.objects_in_tree[key][:,0], self.objects_in_tree[key][:,1], 'o', c=colors[i])
-            plt.plot(self.objects[:,0], self.objects[:,1], color="gray", marker='o', linestyle='None', alpha=0.5)
+            plt.plot(self.objects[:,0], self.objects[:,1], 'ko')
             
             plt.plot(self.start_state[0], self.start_state[1], 'rx')
             plt.plot(self.goal_state[0], self.goal_state[1], 'r^')        
             
             plt.xlim(self.observation_space.low[0], self.observation_space.high[0] )
             plt.ylim(self.observation_space.low[1], self.observation_space.high[1] )
-            plt.xticks([]),plt.yticks([])
             plt.show(block=False)
 
 
@@ -154,24 +166,16 @@ class ReachingEnv(gym.Env):
         ## self.fig.canvas.flush_events()
         p.remove()
         return
-        ## plt.plot(self.state[0], self.state[1], '.b')
-        ## self.ax.set_aspect('equal')
-            
-        ## #colors = cm.rainbow(np.linspace(0, 1, len(self.objects_in_tree.keys())))
-        ## ## for i, key in enumerate(self.objects_in_tree.keys()):
-        ## ##     plt.plot(self.objects_in_tree[key][:,0], self.objects_in_tree[key][:,1], 'o', c=colors[i])
-        ## plt.plot(self.objects[:,0], self.objects[:,1], 'ko')
 
-        ## plt.plot(self.start_state[0], self.start_state[1], 'rx')
-        ## plt.plot(self.goal_state[0], self.goal_state[1], 'r^')        
-        ## plt.xlim(self.observation_space.low[0], self.observation_space.high[0] )
-        ## plt.ylim(self.observation_space.low[1], self.observation_space.high[1] )
-        ## plt.pause(0.001)
+
+    def close(self):
+        plt.close(fig=self.fig)
+        self.fig = None 
 
 
     # --------------------- Get/Set -----------------------
-    def get_action(self, state1, state2):
-        return state2-state1
+    ## def get_action(self, state1, state2):
+    ##     return state2-state1
     def get_start_state(self):
         return self.start_state
     def get_goal_state(self):
