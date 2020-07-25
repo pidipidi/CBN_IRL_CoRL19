@@ -1,0 +1,20 @@
+*~
+*.pyc
+*#
+.#*
+*.pkl
+*.zip
+*.bak
+
+
+# ROS specific files and folders #
+##################################
+build
+devel
+install
+.rosinstall
+.catkin_tools
+.catkin_workspace
+
+# specific repo
+###############
