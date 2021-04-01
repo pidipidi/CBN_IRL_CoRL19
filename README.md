@@ -1,7 +1,11 @@
 # Installation
-Unzip this stack on the ROS WORKSPACE and build it
+Unzip this stack on the ROS WORKSPACE and install dependencies.
 ~~~~bash
-pip install gym tqdm sharedmem
+pip install -r requirements.txt
+~~~~
+
+Then, build it:
+~~~~bash
 catkin build cbn_irl gym_2d
 ~~~~
 
